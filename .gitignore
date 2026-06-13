@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/
+venv/
+.venv/
+
+# 环境配置
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+
+# 嵌套仓库（前端单独管理）
+meal-muse-web/
+
+# Node
+node_modules/
+
+# 数据库
+*.db
