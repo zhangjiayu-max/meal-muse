@@ -29,7 +29,13 @@ class FamilyMember(Base):
     role: Mapped[str] = mapped_column(String(20), default="member")
     relation: Mapped[str | None] = mapped_column(String(30))
     display_name: Mapped[str | None] = mapped_column(String(50))
-    can_view_health: Mapped[bool] = mapped_column(default=True)
-    can_edit_plan: Mapped[bool] = mapped_column(default=True)
+
+    # 隐私控制 - 细粒度权限
+    can_view_diet: Mapped[bool] = mapped_column(default=True)  # 查看饮食记录
+    can_view_body: Mapped[bool] = mapped_column(default=True)  # 查看身体数据
+    can_view_menstrual: Mapped[bool] = mapped_column(default=False)  # 查看经期（默认关闭，需手动开启）
+    can_view_health: Mapped[bool] = mapped_column(default=True)  # 查看健康报告
+    can_edit_plan: Mapped[bool] = mapped_column(default=True)  # 编辑餐食计划
+
     status: Mapped[str] = mapped_column(String(20), default="active")
     joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

@@ -13,8 +13,8 @@ from app.models.health_goal import HealthGoal
 from app.models.user_profile import UserProfile
 from app.models.exercise_record import ExerciseRecord
 from app.services.ai_service import call_ai
-from app.services.context_builder import get_ai_prompt_context
-from app.services.safety_guard import filter_menu_plan, get_safety_rules
+from app.services.context_builder import get_user_context
+from app.services.safety_guard import filter_menu_plan
 from app.services.nutrition_calculator import (
     calculate_daily_calorie_target,
     calculate_macros,
@@ -61,6 +61,9 @@ def _build_meal_prompt(
     macros: dict,
     date_str: str,
     meal_pattern: str = "3_meals",
+    recent_foods: list[str] | None = None,
+    family_needs: str | None = None,
+    nutrient_balance: dict | None = None,
 ) -> str:
     """组装 AI 餐食生成 prompt"""
     meals_count = {"3_meals": "三餐", "4_meals": "四餐（含下午茶）", "5_meals": "五餐（含上下午加餐）"}.get(meal_pattern, "三餐")
@@ -72,8 +75,23 @@ def _build_meal_prompt(
 
 用户信息：
 {user_context}
+"""
 
-请直接输出 JSON，不要有其他文字。"""
+    # 近期饮食去重
+    if recent_foods:
+        prompt += f"\n\n⚠ 用户近3天已吃过以下菜品，请不要重复推荐：{','.join(recent_foods)}"
+
+    # 家庭餐食需求
+    if family_needs:
+        prompt += f"\n\n👨‍👩‍👧‍👦 家庭餐食需求：{family_needs}"
+
+    # 营养失衡提醒
+    if nutrient_balance and nutrient_balance.get("imbalances"):
+        imbalances_str = "；".join(nutrient_balance["imbalances"])
+        prompt += f"\n\n📊 近期营养失衡提醒：{imbalances_str}，请在今日计划中适当调整。"
+
+    # 最终输出指令
+    prompt += "\n\n请直接输出 JSON，不要有其他文字。"
     return prompt
 
 
@@ -96,13 +114,22 @@ async def generate_plan(
     macros = calculate_macros(calorie_target, _get_goal_type(user))
 
     # 3. 获取 AI 上下文
-    user_context = await get_ai_prompt_context(db, user)
+    user_context = await get_user_context(db, user)
 
     # 4. 获取用餐模式
     meal_pattern = "3_meals"
     profile = await _get_profile(db, user.id)
     if profile:
         meal_pattern = profile.meal_pattern or "3_meals"
+
+    # 获取近期饮食去重
+    recent_foods = await _get_recent_food_names(db, user.id, days=3)
+
+    # 获取家庭餐食需求
+    family_needs = await _get_family_needs(profile)
+
+    # 获取营养失衡分析
+    nutrient_balance = await _get_nutrient_balance(db, user.id, days=3, calorie_target=calorie_target, goal_type=_get_goal_type(user))
 
     # 5. AI 生成
     prompt = _build_meal_prompt(
@@ -111,6 +138,9 @@ async def generate_plan(
         macros,
         plan_date.isoformat(),
         meal_pattern,
+        recent_foods=recent_foods,
+        family_needs=family_needs,
+        nutrient_balance=nutrient_balance,
     )
     try:
         raw = await call_ai([], system_prompt=MEAL_PLAN_SYSTEM, temperature=0.7)
@@ -181,7 +211,7 @@ async def replace_meal(
     if not plan:
         raise ValueError("计划不存在")
 
-    user_context = await get_ai_prompt_context(db, user)
+    user_context = await get_user_context(db, user)
     calorie_target = _get_calorie_target(db, user)
     macros = calculate_macros(calorie_target, _get_goal_type(user))
 
@@ -372,3 +402,127 @@ _FALLBACK_HIGH_CAL = {
     ], "total_calories": 380, "total_protein": 22, "total_fat": 8, "total_carbs": 53},
     "ai_note": "今日高热量高蛋白方案，适合增肌或备孕期。",
 }
+
+
+async def _get_recent_food_names(db: AsyncSession, user_id: str, days: int = 3) -> list[str]:
+    """获取近 N 天用户吃过的菜品名称，用于去重"""
+    from datetime import timedelta
+    from app.models.diet_record import DietRecord
+
+    start_date = date.today() - timedelta(days=days)
+    result = await db.execute(
+        select(DietRecord).where(
+            DietRecord.user_id == user_id,
+            DietRecord.record_date >= start_date,
+            DietRecord.deleted_at.is_(None),
+        ).order_by(DietRecord.recorded_at.desc()).limit(20)
+    )
+    records = result.scalars().all()
+
+    # 提取不重复的食物名称
+    seen = set()
+    food_names = []
+    for r in records:
+        if r.food_text and r.food_text not in seen:
+            seen.add(r.food_text)
+            food_names.append(r.food_text)
+    return food_names[:10]  # 最多10条
+
+
+async def _get_family_needs(profile: UserProfile | None) -> str | None:
+    """获取家庭餐食需求描述"""
+    if not profile or not profile.family_cooking or not profile.family_members:
+        return None
+
+    member_strs = []
+    for m in profile.family_members:
+        name = m.get("name", "成员")
+        relation = m.get("relation", "")
+        age_group = m.get("age_group", "")
+        diet_note = m.get("diet_note", "")
+        parts = [name]
+        if relation:
+            parts.append(f"关系: {relation}")
+        if age_group:
+            parts.append(f"年龄段: {age_group}")
+        if diet_note:
+            parts.append(f"饮食注意: {diet_note}")
+        member_strs.append("（" + "，".join(parts) + "）")
+
+    return "需为以下家庭成员一起做饭，每餐要兼顾所有人口味和禁忌：" + "、".join(member_strs)
+
+
+async def _get_nutrient_balance(db: AsyncSession, user_id: str, days: int = 3, calorie_target: int = 1600, goal_type: str = "maintain") -> dict | None:
+    """分析近 N 天营养摄入，返回日均值和失衡项"""
+    from datetime import timedelta
+    from sqlalchemy import func as sqlfunc
+    from app.models.diet_record import DietRecord
+
+    start_date = date.today() - timedelta(days=days)
+    result = await db.execute(
+        select(
+            sqlfunc.sum(DietRecord.total_calories).label("total_cal"),
+            sqlfunc.sum(DietRecord.total_protein).label("total_protein"),
+            sqlfunc.sum(DietRecord.total_fat).label("total_fat"),
+            sqlfunc.sum(DietRecord.total_carbs).label("total_carbs"),
+            sqlfunc.sum(DietRecord.total_fiber).label("total_fiber"),
+            sqlfunc.count(DietRecord.id).label("record_count"),
+        ).where(
+            DietRecord.user_id == user_id,
+            DietRecord.record_date >= start_date,
+            DietRecord.deleted_at.is_(None),
+        )
+    )
+    row = result.one_or_none()
+    if not row or not row.record_count:
+        return None
+
+    # 计算实际有记录的天数（至少 1 天）
+    day_result = await db.execute(
+        select(sqlfunc.count(sqlfunc.distinct(DietRecord.record_date))).where(
+            DietRecord.user_id == user_id,
+            DietRecord.record_date >= start_date,
+            DietRecord.deleted_at.is_(None),
+        )
+    )
+    actual_days = max(day_result.scalar() or 1, 1)
+
+    daily_avg = {
+        "calories": round((row.total_cal or 0) / actual_days, 1),
+        "protein": round((row.total_protein or 0) / actual_days, 1),
+        "fat": round((row.total_fat or 0) / actual_days, 1),
+        "carbs": round((row.total_carbs or 0) / actual_days, 1),
+        "fiber": round((row.total_fiber or 0) / actual_days, 1),
+    }
+
+    # 计算目标值
+    target_macros = calculate_macros(calorie_target, goal_type)
+    imbalances = []
+
+    # 蛋白质检查（低于目标 80%）
+    if target_macros["protein_g"] > 0 and daily_avg["protein"] < target_macros["protein_g"] * 0.8:
+        imbalances.append(f"蛋白质不足（日均{int(daily_avg['protein'])}g，目标{target_macros['protein_g']}g），建议多补充鱼虾、鸡蛋、豆制品")
+
+    # 脂肪检查（超过目标 130%）
+    if target_macros["fat_g"] > 0 and daily_avg["fat"] > target_macros["fat_g"] * 1.3:
+        imbalances.append(f"脂肪摄入偏高（日均{int(daily_avg['fat'])}g，目标{target_macros['fat_g']}g），建议减少油炸和高脂食物")
+
+    # 碳水检查（低于目标 70%）
+    if target_macros["carbs_g"] > 0 and daily_avg["carbs"] < target_macros["carbs_g"] * 0.7:
+        imbalances.append(f"碳水摄入偏低（日均{int(daily_avg['carbs'])}g，目标{target_macros['carbs_g']}g），建议适当补充全谷物")
+
+    # 膳食纤维检查（低于 15g/天）
+    if daily_avg["fiber"] < 15:
+        imbalances.append(f"膳食纤维不足（日均{int(daily_avg['fiber'])}g），建议多吃蔬菜、全谷物和豆类")
+
+    # 热量检查
+    if daily_avg["calories"] < calorie_target * 0.7:
+        imbalances.append(f"热量摄入偏低（日均{int(daily_avg['calories'])}kcal，目标{calorie_target}kcal）")
+    elif daily_avg["calories"] > calorie_target * 1.2:
+        imbalances.append(f"热量摄入偏高（日均{int(daily_avg['calories'])}kcal，目标{calorie_target}kcal）")
+
+    if not imbalances:
+        return None  # 营养均衡，无需提醒
+
+    summary = f"近{actual_days}天日均: {int(daily_avg['calories'])}kcal, 蛋白质{int(daily_avg['protein'])}g, 脂肪{int(daily_avg['fat'])}g, 碳水{int(daily_avg['carbs'])}g"
+    return {"daily_avg": daily_avg, "imbalances": imbalances, "summary": summary}

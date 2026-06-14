@@ -10,3 +10,4 @@ from app.models.health_condition import HealthCondition
 from app.models.allergy_tag import AllergyTag
 from app.models.exercise_record import ExerciseRecord
 from app.models.ai_chat_message import AiChatMessage
+from app.models.user_favorite_food import UserFavoriteFood

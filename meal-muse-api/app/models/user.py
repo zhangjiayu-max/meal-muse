@@ -15,6 +15,7 @@ class User(Base):
     nickname: Mapped[str] = mapped_column(String(50), default="用户")
     avatar_url: Mapped[str | None] = mapped_column(String(512))
     gender: Mapped[str | None] = mapped_column(String(10))
+    age: Mapped[int | None] = mapped_column(Integer)
     birthday: Mapped[datetime | None] = mapped_column(Date)
     height_cm: Mapped[float | None] = mapped_column(DECIMAL(5, 1))
     current_weight: Mapped[float | None] = mapped_column(DECIMAL(5, 1))

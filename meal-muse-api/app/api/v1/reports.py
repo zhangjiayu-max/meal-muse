@@ -7,6 +7,11 @@ from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.models.user import User
 from app.models.diet_record import DietRecord
+from app.services.report_service import (
+    generate_weekly_summary,
+    calculate_nutrition_scores,
+    generate_nutrition_summary,
+)
 
 router = APIRouter(prefix="/reports", tags=["健康报告"])
 
@@ -125,14 +130,8 @@ async def get_weekly_report(
     avg_cal = round(float(row[0] or 0))
     days = int(row[5] or 0)
 
-    # AI 生成总结
     target = current_user.daily_calorie_target or 1580
-    if avg_cal > target + 100:
-        summary = f"本周日均热量 {avg_cal}kcal，超出目标 {avg_cal - target}kcal。建议适当减少高热量食物，增加蔬菜摄入。"
-    elif avg_cal < target - 200:
-        summary = f"本周日均热量 {avg_cal}kcal，低于目标 {target - avg_cal}kcal。注意不要过度节食，保证营养均衡。"
-    else:
-        summary = f"本周日均热量 {avg_cal}kcal，控制良好！继续保持均衡饮食。"
+    ai_summary = generate_weekly_summary(avg_cal, target, days)
 
     return WeeklyReport(
         week_start=week_start.isoformat(),
@@ -143,7 +142,7 @@ async def get_weekly_report(
         avg_daily_carbs=round(float(row[3] or 0), 1),
         days_recorded=days,
         total_meals=int(row[4] or 0),
-        ai_summary=summary,
+        ai_summary=ai_summary,
     )
 
 
@@ -173,29 +172,22 @@ async def get_nutrition_radar(
 
     target = current_user.daily_calorie_target or 1580
 
-    # 计算各项得分 (0-100)
-    cal_score = min(100, round(float(row[0] or 0) / target * 100))
-    protein_score = min(100, round(float(row[1] or 0) / 60 * 100))  # 目标 60g
-    fat_score = min(100, round(float(row[2] or 0) / 55 * 100))  # 目标 55g
-    carbs_score = min(100, round(float(row[3] or 0) / 200 * 100))  # 目标 200g
-    fiber_score = min(100, round(float(row[4] or 0) / 25 * 100))  # 目标 25g
-
-    issues = []
-    if protein_score < 70:
-        issues.append("蛋白质偏低")
-    if fiber_score < 70:
-        issues.append("膳食纤维不足")
-    if cal_score > 110:
-        issues.append("热量超标")
-
-    summary = "本周营养状况良好！" if not issues else f"需要注意：{'、'.join(issues)}。"
+    scores = calculate_nutrition_scores(
+        avg_calories=float(row[0] or 0),
+        avg_protein=float(row[1] or 0),
+        avg_fat=float(row[2] or 0),
+        avg_carbs=float(row[3] or 0),
+        avg_fiber=float(row[4] or 0),
+        calorie_target=target,
+    )
+    summary = generate_nutrition_summary(scores)
 
     return NutritionRadar(
-        protein_score=protein_score,
-        fat_score=fat_score,
-        carbs_score=carbs_score,
-        fiber_score=fiber_score,
-        calorie_score=cal_score,
+        protein_score=scores["protein_score"],
+        fat_score=scores["fat_score"],
+        carbs_score=scores["carbs_score"],
+        fiber_score=scores["fiber_score"],
+        calorie_score=scores["calorie_score"],
         summary=summary,
     )
 

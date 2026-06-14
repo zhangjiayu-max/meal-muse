@@ -1,43 +1,74 @@
-"""AI 调用统一封装 — 通义千问 + fallback"""
+"""AI 调用统一封装 — 多模型支持 + 重试 + fallback
 
+默认使用通义千问 (DashScope)，可在 .env 中切换为小米/OpenAI/自定义。
+所有提供商需支持 OpenAI 兼容的 /v1/chat/completions 接口。
+"""
+
+import asyncio
+import time
+import logging
 import httpx
 from app.config import get_settings
 
-settings = get_settings()
+logger = logging.getLogger(__name__)
 
-API_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
-DEFAULT_MODEL = "qwen-plus"
 DEFAULT_MAX_TOKENS = 1500
 DEFAULT_TEMPERATURE = 0.7
+MAX_RETRIES = 2
+RETRY_DELAYS = [1, 3]
+
+
+def _get_provider_config(provider: str | None = None) -> dict | None:
+    """获取指定提供商的配置，如果未指定则使用当前默认提供商"""
+    settings = get_settings()
+    provider = provider or settings.AI_PROVIDER
+    providers = settings.AI_PROVIDERS
+    cfg = providers.get(provider)
+    if not cfg:
+        logger.warning(f"未知 AI 提供商 '{provider}'，回退到 dashscope")
+        cfg = providers.get("dashscope")
+    return cfg
 
 
 async def call_ai(
     messages: list[dict],
     *,
     model: str | None = None,
+    provider: str | None = None,
     max_tokens: int = DEFAULT_MAX_TOKENS,
     temperature: float = DEFAULT_TEMPERATURE,
     system_prompt: str | None = None,
 ) -> tuple[str, int]:
     """
-    调用通义千问 API。
+    调用 AI API（支持多模型，含重试机制）。
 
     Args:
-        messages: 对话消息列表 [{"role": "user/assistant", "content": "..."}]
-        model: 模型名称，默认 qwen-plus
+        messages: 对话消息 [{"role": "user/assistant", "content": "..."}]
+        model: 模型名称，默认自动选择
+        provider: AI 提供商（dashscope/xiaomi/openai/custom），默认使用 AI_PROVIDER
         max_tokens: 最大输出 token
         temperature: 生成温度
-        system_prompt: 系统提示词（会插入到 messages 最前面）
+        system_prompt: 系统提示词
 
     Returns:
         (content, tokens_used) — tokens 为 0 表示使用了 fallback
     """
-    api_key = settings.DASHSCOPE_API_KEY
+    cfg = _get_provider_config(provider)
+    if not cfg:
+        raise ValueError(f"未找到可用的 AI 提供商配置")
+
+    api_key = cfg["api_key"]
+    api_url = cfg["api_url"]
 
     # 无 API Key → fallback
     if not api_key:
+        logger.warning(f"AI 提供商 '{cfg['name']}' 未配置 API Key，使用内置回复")
         last_msg = messages[-1]["content"] if messages else ""
         return _builtin_response(last_msg), 0
+
+    # 自动选模型
+    if model is None:
+        model = _select_model(messages, provider)
 
     # 组装完整消息
     full_messages: list[dict] = []
@@ -45,28 +76,60 @@ async def call_ai(
         full_messages.append({"role": "system", "content": system_prompt})
     full_messages.extend(messages)
 
-    try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(
-                API_URL,
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": model or DEFAULT_MODEL,
-                    "messages": full_messages,
-                    "max_tokens": max_tokens,
-                    "temperature": temperature,
-                },
-            )
+    last_error = None
+    for attempt in range(MAX_RETRIES + 1):
+        try:
+            start = time.time()
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.post(
+                    api_url,
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": model,
+                        "messages": full_messages,
+                        "max_tokens": max_tokens,
+                        "temperature": temperature,
+                    },
+                )
+            elapsed_ms = (time.time() - start) * 1000
+
+            if resp.status_code == 429:
+                retry_after = int(resp.headers.get("Retry-After", "5"))
+                logger.warning(
+                    f"AI API 限流 (429)，等待 {retry_after}s 后重试"
+                )
+                if attempt < MAX_RETRIES:
+                    await asyncio.sleep(retry_after)
+                    continue
+                raise Exception("AI API 限流")
+
+            resp.raise_for_status()
             data = resp.json()
             content = data["choices"][0]["message"]["content"]
             tokens = data.get("usage", {}).get("total_tokens", 0)
+
+            logger.info(
+                f"AI call success: provider={cfg['name']}, model={model}, "
+                f"tokens={tokens}, time={elapsed_ms:.0f}ms, attempt={attempt + 1}"
+            )
             return content, tokens
-    except Exception:
-        last_msg = messages[-1]["content"] if messages else ""
-        return _builtin_response(last_msg), 0
+
+        except Exception as e:
+            last_error = e
+            logger.warning(
+                f"AI call failed (attempt {attempt + 1}/{MAX_RETRIES + 1}): {e}"
+            )
+            if attempt < MAX_RETRIES:
+                await asyncio.sleep(RETRY_DELAYS[attempt])
+
+    logger.error(
+        f"AI call exhausted retries: provider={cfg['name']}, model={model}, error={last_error}"
+    )
+    last_msg = messages[-1]["content"] if messages else ""
+    return _builtin_response(last_msg), 0
 
 
 async def call_ai_structured(
@@ -74,14 +137,41 @@ async def call_ai_structured(
     system_prompt: str,
     *,
     model: str | None = None,
+    provider: str | None = None,
     temperature: float = 0.3,
 ) -> str:
-    """
-    调用 AI 并要求返回结构化 JSON。
-    在 system_prompt 中明确要求 JSON 格式。
-    """
+    """调用 AI 并要求返回结构化 JSON"""
     messages = [{"role": "user", "content": prompt}]
-    return (await call_ai(messages, system_prompt=system_prompt, model=model, temperature=temperature))[0]
+    return (
+        await call_ai(
+            messages,
+            system_prompt=system_prompt,
+            model=model,
+            provider=provider,
+            temperature=temperature,
+        )
+    )[0]
+
+
+def _select_model(messages: list[dict], provider: str | None = None) -> str:
+    """根据场景自动选择模型"""
+    settings = get_settings()
+    provider = provider or settings.AI_PROVIDER
+    cfg = _get_provider_config(provider)
+    default_model = cfg["default_model"] if cfg else "qwen-plus"
+
+    last_msg = messages[-1]["content"] if messages else ""
+
+    # 如果配置了场景别名优先使用
+    if len(last_msg) < 100 and any(
+        k in last_msg for k in ["吃了", "食物", "解析"]
+    ):
+        return settings.AI_FOOD_PARSE_MODEL or default_model
+
+    if any(k in last_msg for k in ["生成", "计划", "推荐"]):
+        return settings.AI_MEAL_PLAN_MODEL or default_model
+
+    return default_model
 
 
 def _builtin_response(question: str) -> str:

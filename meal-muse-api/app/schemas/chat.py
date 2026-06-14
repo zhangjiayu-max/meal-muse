@@ -8,6 +8,11 @@ class ChatMessage(BaseModel):
     session_id: UUID | None = None
 
 
+class ChatAction(BaseModel):
+    type: str = Field(..., description="Action 类型: DIET_RECORD / PROFILE_UPDATE / MEAL_LINK")
+    data: str = Field(..., description="Action 数据")
+
+
 class ChatResponse(BaseModel):
     id: UUID
     role: str
@@ -16,6 +21,7 @@ class ChatResponse(BaseModel):
     model_used: str | None
     tokens_used: int | None
     created_at: datetime
+    actions: list[ChatAction] = []
 
     class Config:
         from_attributes = True

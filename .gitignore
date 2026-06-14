@@ -27,3 +27,14 @@ node_modules/
 
 # 数据库
 *.db
+
+# Claude Code / Superpowers
+.claude/
+.superpowers/
+
+# 本地数据
+data/
+
+# Next.js build
+.next/
+meal-muse-api/.next/

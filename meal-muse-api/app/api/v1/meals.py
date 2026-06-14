@@ -1,6 +1,6 @@
 """餐食计划 API — 已接入 AI 生成引擎"""
 
-from datetime import date
+from datetime import date, datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -9,6 +9,7 @@ from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.models.user import User
 from app.models.meal_plan import MealPlan
+from app.models.diet_record import DietRecord
 from app.schemas.meal import MealPlanGenerate, MealPlanResponse
 from app.services.meal_plan_engine import generate_plan, replace_meal
 
@@ -60,3 +61,61 @@ async def replace_single_meal(
         return MealPlanResponse.model_validate(plan)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.post("/{plan_id}/adopt")
+async def adopt_plan(
+    plan_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """将餐食计划中的三餐批量创建为饮食记录"""
+    # 1. 获取计划
+    result = await db.execute(
+        select(MealPlan).where(
+            MealPlan.id == plan_id,
+            MealPlan.user_id == current_user.id,
+        )
+    )
+    plan = result.scalar_one_or_none()
+    if not plan:
+        raise HTTPException(status_code=404, detail="计划不存在")
+
+    today = date.today()
+    now = datetime.now(timezone.utc)
+    created_records = []
+
+    # 2. 为每餐创建 diet_record（breakfast/lunch/dinner 是独立的 JSONB 字段）
+    for meal_type in ["breakfast", "lunch", "dinner"]:
+        meal_detail = getattr(plan, meal_type, None)
+        if not meal_detail:
+            continue
+
+        # meal_detail 是 MealDetail 结构: { name, foods: [...], total_calories, ... }
+        foods = meal_detail.get("foods", [])
+        food_names = [f.get("name", "") for f in foods if isinstance(f, dict)]
+        food_text = "、".join(food_names) if food_names else meal_detail.get("name", "")
+
+        record = DietRecord(
+            user_id=current_user.id,
+            meal_type=meal_type,
+            food_text=food_text,
+            parsed_foods=foods,
+            total_calories=meal_detail.get("total_calories", 0),
+            total_protein=meal_detail.get("total_protein", 0),
+            total_fat=meal_detail.get("total_fat", 0),
+            total_carbs=meal_detail.get("total_carbs", 0),
+            recorded_at=now,
+            record_date=today,
+            source="meal_plan",
+            meal_plan_id=plan_id,
+        )
+        db.add(record)
+        created_records.append(record)
+
+    await db.commit()
+
+    return {
+        "message": f"已采纳 {len(created_records)} 餐",
+        "record_count": len(created_records),
+    }
