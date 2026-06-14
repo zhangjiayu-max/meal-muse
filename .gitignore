@@ -19,9 +19,6 @@ venv/
 # OS
 .DS_Store
 
-# 嵌套仓库（前端单独管理）
-meal-muse-web/
-
 # Node
 node_modules/
 

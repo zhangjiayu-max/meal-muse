@@ -1,0 +1,112 @@
+@import "tailwindcss";
+
+:root {
+  --primary: #22c55e;
+  --primary-light: #86efac;
+  --primary-dark: #15803d;
+  --accent: #f59e0b;
+  --warning: #ef4444;
+  --info: #3b82f6;
+  --bg-page: #fafafa;
+  --bg-card: #ffffff;
+  --bg-subtle: #f9fafb;
+  --border-default: #f3f4f6;
+  --text-primary: #111827;
+  --text-secondary: #6b7280;
+  --text-muted: #9ca3af;
+
+  /* 品牌绿 */
+  --brand: #22c55e;
+  --brand-light: #86efac;
+  --brand-dark: #15803d;
+
+  /* 暖橙（食物/热量） */
+  --warm: #f59e0b;
+  --warm-light: #fde68a;
+  --warm-dark: #d97706;
+
+  /* AI 紫 */
+  --ai: #8b5cf6;
+  --ai-light: #c4b5fd;
+  --ai-dark: #6d28d9;
+
+  /* 三餐配色 */
+  --breakfast: #f97316;
+  --lunch: #f59e0b;
+  --dinner: #6366f1;
+}
+
+.dark {
+  --primary: #4ade80;
+  --primary-light: #166534;
+  --primary-dark: #86efac;
+  --accent: #fbbf24;
+  --warning: #f87171;
+  --info: #60a5fa;
+  --bg-page: #0f172a;
+  --bg-card: #1e293b;
+  --bg-subtle: #1e293b;
+  --border-default: #334155;
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+
+  /* 品牌绿（暗色模式） */
+  --brand: #4ade80;
+  --brand-light: #166534;
+  --brand-dark: #86efac;
+
+  /* 暖橙（暗色模式） */
+  --warm: #fbbf24;
+  --warm-light: #92400e;
+  --warm-dark: #fde68a;
+
+  /* AI 紫（暗色模式） */
+  --ai: #a78bfa;
+  --ai-light: #4c1d95;
+  --ai-dark: #c4b5fd;
+
+  /* 三餐配色（暗色模式） */
+  --breakfast: #fb923c;
+  --lunch: #fbbf24;
+  --dinner: #818cf8;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg-page);
+  color: var(--text-primary);
+}
+
+/* Toast slide-in animation */
+@keyframes slide-in {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+.animate-slide-in {
+  animation: slide-in 0.3s ease-out;
+}
+
+/* Smooth transitions for dark mode */
+*, *::before, *::after {
+  transition: background-color 0.2s, border-color 0.2s, color 0.2s;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
