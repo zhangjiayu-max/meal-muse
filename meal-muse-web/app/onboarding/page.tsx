@@ -48,6 +48,12 @@ const GOALS = [
   },
 ];
 
+const GOAL_PRIORITIES = [
+  { key: "pregnancy_safe", label: "备孕安全优先", desc: "保证备孕关键营养，减脂只做温和控制" },
+  { key: "weight_loss", label: "体重管理优先", desc: "控制热量，但不做激进节食" },
+  { key: "balanced", label: "均衡兼顾", desc: "更重视长期饮食质量和稳定执行" },
+];
+
 /* ───── Step 3: Constitution ───── */
 const CONSTITUTIONS = [
   { key: "yang_deficiency", label: "阳虚质", emoji: "☀️", desc: "怕冷、手脚凉、喜热饮", questions: ["经常手脚冰凉？", "喜欢吃热食热饮？", "容易腹泻？"] },
@@ -147,6 +153,7 @@ const BUDGET_LEVELS = [
 const RELATION_OPTIONS = ["老公", "老婆", "孩子", "父母", "公婆", "其他"];
 const AGE_GROUP_OPTIONS = ["0-3岁", "3-6岁", "6-12岁", "12-18岁", "18-60岁", "60岁以上"];
 const FAMILY_DIET_NOTES = ["无特殊", "低盐", "低糖", "补钙", "补铁", "易消化", "其他"];
+const PARTNER_DIET_NOTES = ["少酒", "少油炸", "少高糖", "补锌", "高蛋白", "不吃辣"];
 
 /* ================================================================ */
 /*  Component                                                        */
@@ -166,6 +173,7 @@ export default function OnboardingPage() {
   // Step 2: Goals (multi-select) + sub-goals
   const [goals, setGoals] = useState<string[]>([]);
   const [healthSubGoals, setHealthSubGoals] = useState<string[]>([]);
+  const [goalPriority, setGoalPriority] = useState<"pregnancy_safe" | "weight_loss" | "balanced">("pregnancy_safe");
 
   // Step 3: Constitution
   const [constitutionTypes, setConstitutionTypes] = useState<string[]>([]);
@@ -190,6 +198,16 @@ export default function OnboardingPage() {
   const [sleepPattern, setSleepPattern] = useState("early_bird");
   const [budgetLevel, setBudgetLevel] = useState("medium");
   const [waterIntakeGoal, setWaterIntakeGoal] = useState("");
+
+  // Step 6: Couple preconception
+  const [couplePlanEnabled, setCouplePlanEnabled] = useState(false);
+  const [partnerNickname, setPartnerNickname] = useState("");
+  const [partnerAge, setPartnerAge] = useState("");
+  const [partnerHeight, setPartnerHeight] = useState("");
+  const [partnerWeight, setPartnerWeight] = useState("");
+  const [partnerTastePreference] = useState("mild");
+  const [partnerDislikedFoods, setPartnerDislikedFoods] = useState("");
+  const [partnerDietNotes, setPartnerDietNotes] = useState<string[]>([]);
 
   // Step 6: Family
   const [familyCooking, setFamilyCooking] = useState(false);
@@ -275,6 +293,12 @@ export default function OnboardingPage() {
     );
   };
 
+  const togglePartnerDietNote = (note: string) => {
+    setPartnerDietNotes((prev) =>
+      prev.includes(note) ? prev.filter((item) => item !== note) : [...prev, note]
+    );
+  };
+
   const addFamilyMember = () => {
     setFamilyMembers((prev) => [
       ...prev,
@@ -337,6 +361,7 @@ export default function OnboardingPage() {
           target_weight: targetWeight ? Number(targetWeight) : null,
           goals,
           health_sub_goals: healthSubGoals,
+          goal_priority: goalPriority,
           constitution_types: constitutionTypes,
           constitution_answers: constitutionAnswers,
           diet_type: dietType,
@@ -354,6 +379,19 @@ export default function OnboardingPage() {
           sleep_pattern: sleepPattern,
           budget_level: budgetLevel,
           water_intake_goal: waterIntakeGoal ? Number(waterIntakeGoal) : null,
+          couple_plan_enabled: couplePlanEnabled,
+          partner_profile: couplePlanEnabled
+            ? {
+                nickname: partnerNickname || "伴侣",
+                gender: "male",
+                age: partnerAge ? Number(partnerAge) : null,
+                height_cm: partnerHeight ? Number(partnerHeight) : null,
+                current_weight: partnerWeight ? Number(partnerWeight) : null,
+                taste_preference: partnerTastePreference,
+                disliked_foods: partnerDislikedFoods ? partnerDislikedFoods.split(/[,，、\s]+/).filter(Boolean) : [],
+                diet_notes: partnerDietNotes,
+              }
+            : null,
           family_cooking: familyCooking,
           family_members: familyMembers,
         }),
@@ -598,6 +636,39 @@ export default function OnboardingPage() {
                 );
               })}
             </div>
+
+            {(goals.includes("fertility") || goals.includes("pregnancy")) && (
+              <div>
+                <label className="block text-xs font-medium mb-2" style={{ color: "var(--text-secondary)" }}>
+                  备孕与体重目标优先级
+                </label>
+                <div className="space-y-2">
+                  {GOAL_PRIORITIES.map((item) => {
+                    const selected = goalPriority === item.key;
+                    return (
+                      <button
+                        key={item.key}
+                        onClick={() => setGoalPriority(item.key as "pregnancy_safe" | "weight_loss" | "balanced")}
+                        className="w-full p-3 rounded-xl text-left transition-colors"
+                        style={{
+                          background: selected ? "var(--primary)" : "var(--bg-subtle)",
+                          color: selected ? "#fff" : "var(--text-primary)",
+                          border: `1px solid ${selected ? "var(--primary)" : "var(--border-default)"}`,
+                        }}
+                      >
+                        <span className="block text-sm font-semibold">{item.label}</span>
+                        <span
+                          className="block text-xs mt-1"
+                          style={{ color: selected ? "rgba(255,255,255,0.8)" : "var(--text-secondary)" }}
+                        >
+                          {item.desc}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -1099,11 +1170,102 @@ export default function OnboardingPage() {
           <div className="space-y-5">
             <div>
               <h2 className="text-xl font-bold" style={{ color: "var(--text-primary)" }}>
-                家庭成员
+                夫妻与家庭
               </h2>
               <p className="text-sm mt-1" style={{ color: "var(--text-secondary)" }}>
-                为家人定制饮食方案
+                备孕建议夫妻一起吃，也可以继续补充家庭成员
               </p>
+            </div>
+
+            <div
+              className="p-4 rounded-xl space-y-3"
+              style={{ background: "var(--bg-subtle)", border: "1px solid var(--border-default)" }}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                    夫妻备孕双人计划
+                  </h3>
+                  <p className="text-xs mt-1" style={{ color: "var(--text-secondary)" }}>
+                    同一桌饭，给两个人分别建议份量和营养重点。
+                  </p>
+                </div>
+                <button
+                  onClick={() => setCouplePlanEnabled((v) => !v)}
+                  className="px-3 py-1.5 rounded-full text-xs font-medium"
+                  style={{
+                    background: couplePlanEnabled ? "var(--primary)" : "var(--bg-card)",
+                    color: couplePlanEnabled ? "#fff" : "var(--text-secondary)",
+                    border: `1px solid ${couplePlanEnabled ? "var(--primary)" : "var(--border-default)"}`,
+                  }}
+                >
+                  {couplePlanEnabled ? "已开启" : "开启"}
+                </button>
+              </div>
+
+              {couplePlanEnabled && (
+                <div className="space-y-3">
+                  <input
+                    className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
+                    value={partnerNickname}
+                    onChange={(e) => setPartnerNickname(e.target.value)}
+                    placeholder="伴侣称呼，如 老公"
+                    style={{ background: "var(--bg-card)", border: "1px solid var(--border-default)", color: "var(--text-primary)" }}
+                  />
+                  <div className="grid grid-cols-3 gap-2">
+                    <input
+                      type="number"
+                      className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
+                      value={partnerAge}
+                      onChange={(e) => setPartnerAge(e.target.value)}
+                      placeholder="年龄"
+                      style={{ background: "var(--bg-card)", border: "1px solid var(--border-default)", color: "var(--text-primary)" }}
+                    />
+                    <input
+                      type="number"
+                      className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
+                      value={partnerHeight}
+                      onChange={(e) => setPartnerHeight(e.target.value)}
+                      placeholder="身高"
+                      style={{ background: "var(--bg-card)", border: "1px solid var(--border-default)", color: "var(--text-primary)" }}
+                    />
+                    <input
+                      type="number"
+                      className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
+                      value={partnerWeight}
+                      onChange={(e) => setPartnerWeight(e.target.value)}
+                      placeholder="体重"
+                      style={{ background: "var(--bg-card)", border: "1px solid var(--border-default)", color: "var(--text-primary)" }}
+                    />
+                  </div>
+                  <input
+                    className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
+                    value={partnerDislikedFoods}
+                    onChange={(e) => setPartnerDislikedFoods(e.target.value)}
+                    placeholder="伴侣忌口，如 香菜、动物内脏"
+                    style={{ background: "var(--bg-card)", border: "1px solid var(--border-default)", color: "var(--text-primary)" }}
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    {PARTNER_DIET_NOTES.map((note) => {
+                      const selected = partnerDietNotes.includes(note);
+                      return (
+                        <button
+                          key={note}
+                          onClick={() => togglePartnerDietNote(note)}
+                          className="px-3 py-1.5 rounded-full text-xs transition-colors"
+                          style={{
+                            background: selected ? "var(--primary)" : "var(--bg-card)",
+                            color: selected ? "#fff" : "var(--text-secondary)",
+                            border: `1px solid ${selected ? "var(--primary)" : "var(--border-default)"}`,
+                          }}
+                        >
+                          {note}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Family cooking toggle */}

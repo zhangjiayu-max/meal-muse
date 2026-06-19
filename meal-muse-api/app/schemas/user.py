@@ -50,6 +50,22 @@ class UserResponse(BaseModel):
         from_attributes = True
 
 
+class PartnerProfile(BaseModel):
+    nickname: str | None = None
+    gender: str | None = None
+    age: int | None = None
+    height_cm: float | None = None
+    current_weight: float | None = None
+    activity_level: str | None = None
+    taste_preference: str | None = None
+    cuisine_preference: list[str] | None = None
+    disliked_foods: list[str] | None = None
+    allergens: list[str] | None = None
+    diet_notes: list[str] | None = None
+    daily_calorie_target: int | None = None
+    macro_targets: dict | None = None
+
+
 class UserProfileResponse(BaseModel):
     """用户画像子表响应"""
     taste_preference: str = "mild"
@@ -66,6 +82,9 @@ class UserProfileResponse(BaseModel):
     water_intake_goal: int | None = None
     constitution_types: list[str] | None = None
     health_sub_goals: list[str] | None = None
+    goal_priority: str = "pregnancy_safe"
+    partner_profile: PartnerProfile | dict | None = None
+    couple_plan_enabled: bool = False
     preferred_ingredients: list[str] | None = None
     cooking_frequency: str = "often"
     takeout_preference: str = "any"
@@ -93,6 +112,9 @@ class UserProfileUpdate(BaseModel):
     water_intake_goal: int | None = None
     constitution_types: list[str] | None = None
     health_sub_goals: list[str] | None = None
+    goal_priority: str | None = None
+    partner_profile: PartnerProfile | dict | None = None
+    couple_plan_enabled: bool | None = None
     preferred_ingredients: list[str] | None = None
     cooking_frequency: str | None = None
     takeout_preference: str | None = None

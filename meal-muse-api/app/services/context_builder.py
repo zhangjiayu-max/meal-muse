@@ -53,6 +53,36 @@ SUB_GOAL_LABELS = {
 FREQ_LABELS = {"often": "天天做", "sometimes": "3-5次/周", "rarely": "偶尔", "never": "从不"}
 TAKEOUT_LABELS = {"healthy_light": "营养轻食", "home_style": "家常菜", "fast_food": "快餐", "any": "都行"}
 
+GOAL_PRIORITY_LABELS = {
+    "pregnancy_safe": "备孕安全优先",
+    "weight_loss": "体重管理优先",
+    "balanced": "均衡兼顾",
+}
+
+
+def _format_partner_profile(partner: dict | None) -> str | None:
+    if not partner:
+        return None
+
+    parts = []
+    nickname = partner.get("nickname") or "伴侣"
+    parts.append(nickname)
+    if partner.get("age"):
+        parts.append(f"{partner['age']}岁")
+    if partner.get("height_cm") and partner.get("current_weight"):
+        parts.append(f"{partner['height_cm']}cm/{partner['current_weight']}kg")
+    if partner.get("taste_preference"):
+        parts.append(f"口味{partner['taste_preference']}")
+    if partner.get("cuisine_preference"):
+        parts.append("偏好" + "、".join(partner["cuisine_preference"]))
+    if partner.get("disliked_foods"):
+        parts.append("忌" + "、".join(partner["disliked_foods"]))
+    if partner.get("allergens"):
+        parts.append("过敏" + "、".join(partner["allergens"]))
+    if partner.get("diet_notes"):
+        parts.append("注意" + "、".join(partner["diet_notes"]))
+    return "，".join(parts)
+
 
 async def get_user_context(db: AsyncSession, user: User) -> str:
     """
@@ -119,6 +149,14 @@ async def get_user_context(db: AsyncSession, user: User) -> str:
         if profile.health_sub_goals:
             sub_str = "、".join(SUB_GOAL_LABELS.get(s, s) for s in profile.health_sub_goals)
             info.append(f"细分目标：{sub_str}")
+
+        if profile.goal_priority:
+            info.append(f"目标优先级：{GOAL_PRIORITY_LABELS.get(profile.goal_priority, profile.goal_priority)}")
+        if profile.couple_plan_enabled:
+            partner_desc = _format_partner_profile(profile.partner_profile)
+            if partner_desc:
+                info.append(f"夫妻备孕双人计划：伴侣信息({partner_desc})")
+                info.append("男方备孕营养重点：优质蛋白、锌、硒、Omega-3、抗氧化食物，减少酒精、高糖和油炸")
 
         # 新增: 偏好食材
         if profile.preferred_ingredients:
@@ -206,6 +244,12 @@ async def get_ai_prompt_context(db: AsyncSession, user: User) -> str:
             parts.append(f"饮食类型：{profile.diet_type}")
         if profile.disliked_foods:
             parts.append(f"忌口：{'、'.join(profile.disliked_foods)}")
+        if profile.goal_priority:
+            parts.append(f"目标优先级：{GOAL_PRIORITY_LABELS.get(profile.goal_priority, profile.goal_priority)}")
+        if profile.couple_plan_enabled:
+            partner_desc = _format_partner_profile(profile.partner_profile)
+            if partner_desc:
+                parts.append(f"伴侣：{partner_desc}")
     if allergies:
         parts.append(f"过敏：{'、'.join(a.custom_name or a.allergen for a in allergies)}")
     if conditions:
@@ -241,6 +285,12 @@ async def get_profile_summary(db: AsyncSession, user: User) -> str:
     if profile.health_sub_goals:
         sub_str = "、".join(SUB_GOAL_LABELS.get(s, s) for s in profile.health_sub_goals[:3])
         segs.append(sub_str)
+    if profile.goal_priority:
+        segs.append(GOAL_PRIORITY_LABELS.get(profile.goal_priority, profile.goal_priority))
+    if profile.couple_plan_enabled:
+        partner_desc = _format_partner_profile(profile.partner_profile)
+        if partner_desc:
+            segs.append(f"夫妻备孕，伴侣{partner_desc}")
 
     # 饮食偏好
     diet_parts = []

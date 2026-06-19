@@ -35,6 +35,33 @@ export interface UserProfile {
   budget_level: string;
   meal_prep_time: string;
   water_intake_goal: number | null;
+  constitution_types: string[] | null;
+  health_sub_goals: string[] | null;
+  preferred_ingredients: string[] | null;
+  cooking_frequency: string;
+  takeout_preference: string;
+  family_cooking: boolean;
+  family_members: Record<string, unknown>[] | null;
+  onboarding_version: number;
+  goal_priority: "pregnancy_safe" | "weight_loss" | "balanced";
+  partner_profile: PartnerProfile | null;
+  couple_plan_enabled: boolean;
+}
+
+export interface PartnerProfile {
+  nickname?: string;
+  gender?: string;
+  age?: number | null;
+  height_cm?: number | null;
+  current_weight?: number | null;
+  activity_level?: string;
+  taste_preference?: string;
+  cuisine_preference?: string[];
+  disliked_foods?: string[];
+  allergens?: string[];
+  diet_notes?: string[];
+  daily_calorie_target?: number | null;
+  macro_targets?: Record<string, number> | null;
 }
 
 export interface HealthGoal {

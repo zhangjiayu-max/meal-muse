@@ -24,7 +24,14 @@ async def generate_meal_plan(
 ):
     """生成今日三餐计划（基于用户画像 AI 生成）"""
     plan_date = req.plan_date or date.today()
-    plan = await generate_plan(db, current_user, plan_date)
+    plan = await generate_plan(
+        db,
+        current_user,
+        plan_date,
+        couple_plan_enabled=req.couple_plan_enabled,
+        goal_priority=req.goal_priority,
+        meal_context=req.meal_context,
+    )
     return MealPlanResponse.model_validate(plan)
 
 

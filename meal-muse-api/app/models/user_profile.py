@@ -27,6 +27,9 @@ class UserProfile(Base):
     # 新增画像增强字段
     constitution_types: Mapped[list | None] = mapped_column(JSONB, default=list)  # 体质类型 ["yang_deficiency", "qi_deficiency"]
     health_sub_goals: Mapped[list | None] = mapped_column(JSONB, default=list)  # 子目标 ["pregnancy_preparing", "early_pregnancy"]
+    goal_priority: Mapped[str] = mapped_column(String(30), default="pregnancy_safe")  # pregnancy_safe/weight_loss/balanced
+    partner_profile: Mapped[dict | None] = mapped_column(JSONB, default=dict)  # 伴侣档案，用于夫妻备孕双人计划
+    couple_plan_enabled: Mapped[bool] = mapped_column(default=False)  # 是否启用夫妻备孕双人计划
     preferred_ingredients: Mapped[list | None] = mapped_column(JSONB, default=list)  # 偏好食材 ["鸡胸肉", "三文鱼"]
     cooking_frequency: Mapped[str] = mapped_column(String(20), default="often")  # often/sometimes/rarely/never
     takeout_preference: Mapped[str] = mapped_column(String(20), default="any")  # healthy_light/home_style/fast_food/any

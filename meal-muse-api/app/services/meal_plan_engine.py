@@ -31,6 +31,12 @@ MEAL_PLAN_SYSTEM = """你是一位专业的中式营养师，负责根据用户�
   "breakfast": {
     "name": "早餐名称",
     "foods": [{"name": "食物名", "amount": "份量", "calories": 数字, "protein": 数字, "fat": 数字, "carbs": 数字}],
+    "serving_advice": {
+      "primary": {"label": "女方", "portion": "具体份量", "calories": 数字, "reason": "推荐理由"},
+      "partner": {"label": "男方", "portion": "具体份量", "calories": 数字, "reason": "推荐理由"}
+    },
+    "reason_tags": ["补铁", "高蛋白"],
+    "personalized_reason": "为什么推荐这餐",
     "total_calories": 数字,
     "total_protein": 数字,
     "total_fat": 数字,
@@ -51,8 +57,54 @@ MEAL_PLAN_SYSTEM = """你是一位专业的中式营养师，负责根据用户�
 - 三餐必须包含至少一种深色蔬菜
 - 烹饪方式优先清蒸、水煮、凉拌，少油炒
 - 食物份量要具体（1碗/1份/1个/半根等）
+- 如果是夫妻备孕双人计划，生成同一桌饭，但必须给女方和男方分别给出份量和推荐理由
+- 女方备孕重点：叶酸、铁、钙、DHA、蛋白质；如果减脂，只能温和控制热量
+- 男方备孕重点：优质蛋白、锌、硒、Omega-3、抗氧化食物；减少酒精、高糖、油炸
+- 不做医疗承诺，不声称治疗不孕不育
 - 如果用户无厨房（no_kitchen），则 breakfast 推荐即食食品（牛奶+面包+鸡蛋），lunch/dinner 推荐外卖搭配建议
 """
+
+
+GOAL_PRIORITY_LABELS = {
+    "pregnancy_safe": "备孕安全优先",
+    "weight_loss": "体重管理优先",
+    "balanced": "均衡兼顾",
+}
+
+
+def _format_partner_context(profile: UserProfile | None) -> str | None:
+    if not profile or not profile.couple_plan_enabled or not profile.partner_profile:
+        return None
+
+    partner = profile.partner_profile or {}
+    parts = []
+    nickname = partner.get("nickname") or "伴侣"
+    parts.append(f"称呼：{nickname}")
+    if partner.get("age"):
+        parts.append(f"年龄：{partner['age']}岁")
+    if partner.get("height_cm") and partner.get("current_weight"):
+        parts.append(f"身高体重：{partner['height_cm']}cm/{partner['current_weight']}kg")
+    if partner.get("daily_calorie_target"):
+        parts.append(f"热量目标：{partner['daily_calorie_target']}kcal")
+    if partner.get("taste_preference"):
+        parts.append(f"口味：{partner['taste_preference']}")
+    if partner.get("cuisine_preference"):
+        parts.append("菜系偏好：" + "、".join(partner["cuisine_preference"]))
+    if partner.get("disliked_foods"):
+        parts.append("忌口：" + "、".join(partner["disliked_foods"]))
+    if partner.get("allergens"):
+        parts.append("过敏：" + "、".join(partner["allergens"]))
+    if partner.get("diet_notes"):
+        parts.append("饮食注意：" + "、".join(partner["diet_notes"]))
+    return "；".join(parts)
+
+
+def _get_goal_priority(profile: UserProfile | None, override: str | None = None) -> str:
+    if override in GOAL_PRIORITY_LABELS:
+        return override
+    if profile and profile.goal_priority in GOAL_PRIORITY_LABELS:
+        return profile.goal_priority
+    return "pregnancy_safe"
 
 
 def _build_meal_prompt(
@@ -64,6 +116,10 @@ def _build_meal_prompt(
     recent_foods: list[str] | None = None,
     family_needs: str | None = None,
     nutrient_balance: dict | None = None,
+    couple_plan_enabled: bool = False,
+    partner_context: str | None = None,
+    goal_priority: str = "pregnancy_safe",
+    meal_context: str | None = None,
 ) -> str:
     """组装 AI 餐食生成 prompt"""
     meals_count = {"3_meals": "三餐", "4_meals": "四餐（含下午茶）", "5_meals": "五餐（含上下午加餐）"}.get(meal_pattern, "三餐")
@@ -90,6 +146,21 @@ def _build_meal_prompt(
         imbalances_str = "；".join(nutrient_balance["imbalances"])
         prompt += f"\n\n📊 近期营养失衡提醒：{imbalances_str}，请在今日计划中适当调整。"
 
+    prompt += f"\n\n目标优先级：{GOAL_PRIORITY_LABELS.get(goal_priority, goal_priority)}"
+    if meal_context:
+        prompt += f"\n\n本次特殊要求：{meal_context}"
+    if couple_plan_enabled and partner_context:
+        prompt += f"""
+
+夫妻备孕双人计划：
+- 伴侣信息：{partner_context}
+- 请生成同一桌饭，不要为两个人生成完全不同菜单
+- 每餐必须给出 serving_advice.primary 和 serving_advice.partner
+- 女方份量兼顾备孕营养与温和体重管理
+- 男方份量重点支持备孕营养：优质蛋白、锌、硒、Omega-3、抗氧化食物
+- 双方忌口和过敏都必须规避
+"""
+
     # 最终输出指令
     prompt += "\n\n请直接输出 JSON，不要有其他文字。"
     return prompt
@@ -102,6 +173,9 @@ async def generate_plan(
     db: AsyncSession,
     user: User,
     plan_date: date,
+    couple_plan_enabled: bool | None = None,
+    goal_priority: str | None = None,
+    meal_context: str | None = None,
 ) -> MealPlan:
     """
     为用户生成指定日期的餐食计划。
@@ -121,6 +195,12 @@ async def generate_plan(
     profile = await _get_profile(db, user.id)
     if profile:
         meal_pattern = profile.meal_pattern or "3_meals"
+    effective_couple_plan_enabled = bool(
+        couple_plan_enabled if couple_plan_enabled is not None
+        else (profile.couple_plan_enabled if profile else False)
+    )
+    effective_goal_priority = _get_goal_priority(profile, goal_priority)
+    partner_context = _format_partner_context(profile) if effective_couple_plan_enabled else None
 
     # 获取近期饮食去重
     recent_foods = await _get_recent_food_names(db, user.id, days=3)
@@ -141,9 +221,17 @@ async def generate_plan(
         recent_foods=recent_foods,
         family_needs=family_needs,
         nutrient_balance=nutrient_balance,
+        couple_plan_enabled=effective_couple_plan_enabled,
+        partner_context=partner_context,
+        goal_priority=effective_goal_priority,
+        meal_context=meal_context,
     )
     try:
-        raw = await call_ai([], system_prompt=MEAL_PLAN_SYSTEM, temperature=0.7)
+        raw = await call_ai(
+            [{"role": "user", "content": prompt}],
+            system_prompt=MEAL_PLAN_SYSTEM,
+            temperature=0.7,
+        )
         plan_data = _parse_json_response(raw[0])
         if not plan_data:
             raise ValueError("AI 返回格式解析失败")
@@ -170,6 +258,12 @@ async def generate_plan(
         existing.dinner = plan_data.get("dinner")
         existing.total_calories = total_cal
         existing.ai_note = plan_data.get("ai_note", "AI 生成")
+        existing.generate_params = {
+            "couple_plan_enabled": effective_couple_plan_enabled,
+            "goal_priority": effective_goal_priority,
+            "meal_context": meal_context,
+            "recent_foods": recent_foods,
+        }
         existing.version += 1
         await db.commit()
         await db.refresh(existing)
@@ -183,6 +277,12 @@ async def generate_plan(
         dinner=plan_data.get("dinner"),
         total_calories=total_cal,
         ai_note=plan_data.get("ai_note", "AI 生成"),
+        generate_params={
+            "couple_plan_enabled": effective_couple_plan_enabled,
+            "goal_priority": effective_goal_priority,
+            "meal_context": meal_context,
+            "recent_foods": recent_foods,
+        },
         status="pending",
     )
     db.add(plan)
@@ -324,7 +424,34 @@ def _get_fallback_plan(calorie_target: int) -> dict:
         plan["lunch"]["total_calories"],
         plan["dinner"]["total_calories"],
     ])
+    for meal_type in ["breakfast", "lunch", "dinner"]:
+        plan[meal_type] = _with_default_serving_advice(plan[meal_type], meal_type)
     return plan
+
+
+def _with_default_serving_advice(meal: dict, meal_type: str) -> dict:
+    if meal.get("serving_advice"):
+        return meal
+
+    meal = dict(meal)
+    calories = meal.get("total_calories", 0)
+    meal["serving_advice"] = {
+        "primary": {
+            "label": "女方",
+            "portion": "按推荐份量食用，主食保持半份到一份",
+            "calories": int(calories * 0.45),
+            "reason": "兼顾备孕营养和温和热量控制",
+        },
+        "partner": {
+            "label": "男方",
+            "portion": "蛋白质和主食可比女方增加约三分之一",
+            "calories": int(calories * 0.60),
+            "reason": "补充优质蛋白、锌和硒等备孕支持营养",
+        },
+    }
+    meal["reason_tags"] = meal.get("reason_tags") or ["备孕友好", "高蛋白"]
+    meal["personalized_reason"] = meal.get("personalized_reason") or "兜底方案优先选择高蛋白、少油、营养均衡的家常搭配。"
+    return meal
 
 
 def _get_fallback_meal(calorie_target: int, meal_type: str) -> dict:
@@ -345,7 +472,7 @@ def _get_fallback_meal(calorie_target: int, meal_type: str) -> dict:
             {"name": "蒜蓉菠菜", "amount": "1份", "calories": 40, "protein": 3, "fat": 1, "carbs": 5},
         ], "total_calories": 120, "total_protein": 9, "total_fat": 4, "total_carbs": 13},
     }
-    return templates.get(meal_type, templates["lunch"])
+    return _with_default_serving_advice(templates.get(meal_type, templates["lunch"]), meal_type)
 
 
 # 内置模板数据

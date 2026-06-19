@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
 
 import api from "@/lib/api";
+import { toast } from "@/components/ui/toast";
 import { RefreshCw, Coffee, Sun, Moon, Sparkles, ChefHat } from "lucide-react";
 
 interface FoodItem {
@@ -22,6 +22,21 @@ interface MealDetail {
   total_protein: number;
   total_fat: number;
   total_carbs: number;
+  serving_advice?: ServingAdvice | null;
+  reason_tags?: string[] | null;
+  personalized_reason?: string | null;
+}
+
+interface ServingAdviceItem {
+  label?: string;
+  portion?: string;
+  calories?: number;
+  reason?: string;
+}
+
+interface ServingAdvice {
+  primary?: ServingAdviceItem;
+  partner?: ServingAdviceItem;
 }
 
 interface MealPlan {
@@ -34,6 +49,12 @@ interface MealPlan {
   ai_note: string | null;
   status: string;
   version: number;
+  generate_params?: {
+    couple_plan_enabled?: boolean;
+    goal_priority?: string;
+    meal_context?: string | null;
+    recent_foods?: string[];
+  } | null;
 }
 
 const mealConfig = {
@@ -43,28 +64,17 @@ const mealConfig = {
 };
 
 export default function PlanPage() {
-  const router = useRouter();
-
   const [plan, setPlan] = useState<MealPlan | null>(null);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [adopting, setAdopting] = useState(false);
-
-  const fetchPlan = async () => {
-    setLoading(true);
-    try {
-      const { data } = await api.get("/meals/plan");
-      setPlan(data);
-    } catch { /* no plan yet */ }
-    setLoading(false);
-  };
 
   const generatePlan = async () => {
     setGenerating(true);
     try {
       const { data } = await api.post("/meals/generate", {});
       setPlan(data);
-    } catch { alert("生成失败"); }
+    } catch { toast("error", "生成失败"); }
     setGenerating(false);
   };
 
@@ -73,7 +83,7 @@ export default function PlanPage() {
     try {
       const { data } = await api.post(`/meals/${plan.id}/replace?meal_type=${mealType}`);
       setPlan(data);
-    } catch { alert("替换失败"); }
+    } catch { toast("error", "替换失败"); }
   };
 
   const handleAdoptPlan = async () => {
@@ -81,23 +91,45 @@ export default function PlanPage() {
     setAdopting(true);
     try {
       const { data } = await api.post(`/meals/${plan.id}/adopt`);
-      alert(`已采纳 ${data.record_count} 餐到今日记录`);
+      toast("success", `已采纳 ${data.record_count} 餐到今日记录`);
     } catch {
-      alert("采纳失败，请重试");
+      toast("error", "采纳失败，请重试");
     } finally {
       setAdopting(false);
     }
   };
 
   useEffect(() => {
-    fetchPlan();
+    let cancelled = false;
+
+    const loadInitialPlan = async () => {
+      setLoading(true);
+      try {
+        const { data } = await api.get("/meals/plan");
+        if (!cancelled) {
+          setPlan(data);
+        }
+      } catch { /* no plan yet */ }
+      if (!cancelled) {
+        setLoading(false);
+      }
+    };
+
+    loadInitialPlan();
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  const isCouplePlan = Boolean(plan?.generate_params?.couple_plan_enabled);
 
   return (
     <div className="flex flex-col  ">
       <header className="flex items-center justify-between">
         
-        <h1 className="text-lg font-bold text-gray-900">餐食计划</h1>
+        <h1 className="text-lg font-bold text-gray-900">
+          {isCouplePlan ? "夫妻今日怎么吃" : "餐食计划"}
+        </h1>
       </header>
 
       <main className="flex-1 px-4 py-4 space-y-4 pb-20">
@@ -129,6 +161,12 @@ export default function PlanPage() {
               </div>
               <p className="text-2xl font-bold text-green-700">{plan.total_calories} kcal</p>
               {plan.ai_note && <p className="text-xs text-green-600 mt-2">{plan.ai_note}</p>}
+              {isCouplePlan && (
+                <div className="flex flex-wrap gap-2 mt-3">
+                  <span className="text-xs px-2 py-1 rounded-full bg-white text-green-700">共同目标：备孕</span>
+                  <span className="text-xs px-2 py-1 rounded-full bg-white text-green-700">同一桌饭，份量分配</span>
+                </div>
+              )}
             </div>
 
             {/* Meals */}
@@ -162,6 +200,46 @@ export default function PlanPage() {
                         <span>脂肪 {meal.total_fat}g</span>
                         <span>碳水 {meal.total_carbs}g</span>
                       </div>
+                      {meal.serving_advice && (
+                        <div className="grid gap-2 pt-2 border-t border-gray-50">
+                          {meal.serving_advice.primary && (
+                            <div className="rounded-lg bg-green-50 px-3 py-2">
+                              <div className="text-xs font-medium text-green-800">
+                                {meal.serving_advice.primary.label || "女方"}：{meal.serving_advice.primary.portion}
+                              </div>
+                              {meal.serving_advice.primary.reason && (
+                                <div className="text-xs text-green-700 mt-1">{meal.serving_advice.primary.reason}</div>
+                              )}
+                            </div>
+                          )}
+                          {meal.serving_advice.partner && (
+                            <div className="rounded-lg bg-blue-50 px-3 py-2">
+                              <div className="text-xs font-medium text-blue-800">
+                                {meal.serving_advice.partner.label || "男方"}：{meal.serving_advice.partner.portion}
+                              </div>
+                              {meal.serving_advice.partner.reason && (
+                                <div className="text-xs text-blue-700 mt-1">{meal.serving_advice.partner.reason}</div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {(meal.reason_tags?.length || meal.personalized_reason) && (
+                        <div className="pt-2">
+                          {meal.reason_tags?.length ? (
+                            <div className="flex flex-wrap gap-1 mb-2">
+                              {meal.reason_tags.map((tag) => (
+                                <span key={tag} className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                                  {tag}
+                                </span>
+                              ))}
+                            </div>
+                          ) : null}
+                          {meal.personalized_reason && (
+                            <p className="text-xs leading-relaxed text-gray-500">{meal.personalized_reason}</p>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

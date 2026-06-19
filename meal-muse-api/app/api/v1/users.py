@@ -45,6 +45,9 @@ class OnboardingRequest(BaseModel):
     water_intake_goal: int | None = Field(default=None, description="每日饮水目标(ml)")
     constitution_types: list[str] = Field(default=[], description="体质类型")
     health_sub_goals: list[str] = Field(default=[], description="子目标，如 ['pregnancy_preparing']")
+    goal_priority: str = Field(default="pregnancy_safe", description="pregnancy_safe/weight_loss/balanced")
+    partner_profile: dict | None = Field(default=None, description="伴侣档案")
+    couple_plan_enabled: bool = Field(default=False, description="是否启用夫妻备孕双人计划")
     preferred_ingredients: list[str] = Field(default=[], description="偏好食材")
     cooking_frequency: str = Field(default="often", description="often/sometimes/rarely/never")
     takeout_preference: str = Field(default="any", description="healthy_light/home_style/fast_food/any")
@@ -129,6 +132,9 @@ async def onboarding(
             profile.water_intake_goal = req.water_intake_goal
             profile.constitution_types = req.constitution_types
             profile.health_sub_goals = req.health_sub_goals
+            profile.goal_priority = req.goal_priority
+            profile.partner_profile = req.partner_profile or {}
+            profile.couple_plan_enabled = req.couple_plan_enabled
             profile.preferred_ingredients = req.preferred_ingredients
             profile.cooking_frequency = req.cooking_frequency
             profile.takeout_preference = req.takeout_preference
@@ -151,6 +157,9 @@ async def onboarding(
                 water_intake_goal=req.water_intake_goal,
                 constitution_types=req.constitution_types,
                 health_sub_goals=req.health_sub_goals,
+                goal_priority=req.goal_priority,
+                partner_profile=req.partner_profile or {},
+                couple_plan_enabled=req.couple_plan_enabled,
                 preferred_ingredients=req.preferred_ingredients,
                 cooking_frequency=req.cooking_frequency,
                 takeout_preference=req.takeout_preference,
