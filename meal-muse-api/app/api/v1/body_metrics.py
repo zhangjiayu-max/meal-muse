@@ -1,4 +1,4 @@
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
@@ -94,7 +94,7 @@ async def list_body_metrics(
     db: AsyncSession = Depends(get_db),
 ):
     """获取身体数据列表"""
-    start_date = date.today() - __import__("datetime").timedelta(days=days)
+    start_date = date.today() - timedelta(days=days)
     result = await db.execute(
         select(BodyMetric).where(
             BodyMetric.user_id == current_user.id,

@@ -22,8 +22,7 @@ import { toast } from "@/components/ui/toast";
 import { confirm } from "@/components/ui/confirm";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/error-message";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+import api from "@/lib/api";
 
 const mealTabs = [
   { key: "breakfast", label: "早餐", icon: Coffee, emoji: "🌅" },
@@ -69,53 +68,31 @@ export default function RecordPage() {
     setSubmitting(true);
 
     try {
-      const token = localStorage.getItem("token");
-      if (!token) return;
-
-      const res = await fetch(`${API_BASE}/diet/records`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          meal_type: activeTab,
-          food_text: foodText.trim(),
-          recorded_at: new Date(
-            `${new Date().toISOString().slice(0, 10)}T${mealTime}:00+08:00`
-          ).toISOString(),
-        }),
+      await api.post("/diet/records", {
+        meal_type: activeTab,
+        food_text: foodText.trim(),
+        recorded_at: new Date(
+          `${new Date().toISOString().slice(0, 10)}T${mealTime}:00+08:00`
+        ).toISOString(),
       });
 
-      if (res.ok) {
-        // 记录成功后，添加到常用列表
-        const foods = foodText
-          .split(/[+＋、，,]/)
-          .map((f) => f.trim())
-          .filter(Boolean);
-        for (const food of foods) {
-          await fetch(`${API_BASE}/diet/favorites`, {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              food_name: food,
-              meal_type: activeTab,
-            }),
-          }).catch(() => {});
-        }
-
-        setFoodText("");
-        await fetchToday();
-        toast("success", "记录成功 🎉");
-      } else {
-        const err = await res.json().catch(() => ({}));
-        toast("error", err.error || "记录失败，请重试");
+      // 记录成功后，添加到常用列表
+      const foods = foodText
+        .split(/[+＋、，,]/)
+        .map((f) => f.trim())
+        .filter(Boolean);
+      for (const food of foods) {
+        await api
+          .post("/diet/favorites", { food_name: food, meal_type: activeTab })
+          .catch(() => {});
       }
-    } catch {
-      toast("error", "网络异常，请检查连接后重试");
+
+      setFoodText("");
+      await fetchToday();
+      toast("success", "记录成功 🎉");
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: string } } };
+      toast("error", e.response?.data?.error || "记录失败，请重试");
     } finally {
       setSubmitting(false);
     }

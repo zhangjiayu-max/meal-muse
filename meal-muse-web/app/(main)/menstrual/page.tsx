@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 import api from "@/lib/api";
+import { toast } from "@/components/ui/toast";
 import { Calendar, Droplets, Smile, Apple, AlertCircle } from "lucide-react";
 
 interface CycleRecord {
@@ -66,7 +67,7 @@ export default function MenstrualPage() {
       setFormDate("");
       setFormEnd("");
       setSymptoms([]);
-    } catch { alert("记录失败"); }
+    } catch { toast("error", "记录失败"); }
   };
 
   const symptomOptions = ["痛经", "腰酸", "情绪波动", "疲劳", "头痛", "腹胀", "失眠"];

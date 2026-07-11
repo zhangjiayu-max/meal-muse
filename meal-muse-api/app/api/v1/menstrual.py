@@ -6,6 +6,7 @@ from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.models.user import User
 from app.models.menstrual_cycle import MenstrualCycle
+from app.services.menstrual_service import calculate_menstrual_phase, get_phase_diet_tip
 from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/menstrual", tags=["生理期"])
@@ -38,62 +39,6 @@ class CycleResponse(BaseModel):
 
     class Config:
         from_attributes = True
-
-
-# 经期阶段饮食建议
-PHASE_DIET_TIPS = {
-    "menstrual": {
-        "phase_name": "月经期",
-        "diet_focus": "温补驱寒，补充铁质",
-        "recommended": ["红糖姜茶", "当归羊肉汤", "猪肝", "菠菜", "红枣", "桂圆"],
-        "avoid": ["冰淇淋", "冷饮", "西瓜", "螃蟹"],
-        "recommended_fruits": ["樱桃", "红枣", "桂圆", "榴莲"],
-        "avoid_fruits": ["西瓜", "梨", "柚子"],
-    },
-    "follicular": {
-        "phase_name": "卵泡期",
-        "diet_focus": "补充优质蛋白，为排卵做准备",
-        "recommended": ["鸡蛋", "鱼", "豆腐", "黑芝麻", "黑豆", "西兰花"],
-        "avoid": ["油炸食品", "高糖食物"],
-        "recommended_fruits": ["蓝莓", "草莓", "苹果", "牛油果"],
-        "avoid_fruits": [],
-    },
-    "ovulation": {
-        "phase_name": "排卵期",
-        "diet_focus": "补充叶酸和锌，促进卵子质量",
-        "recommended": ["黑豆", "豆浆", "坚果", "深海鱼", "芦笋", "菠菜"],
-        "avoid": ["酒精", "咖啡过量"],
-        "recommended_fruits": ["牛油果", "蓝莓", "石榴", "猕猴桃"],
-        "avoid_fruits": ["冰镇水果"],
-    },
-    "luteal": {
-        "phase_name": "黄体期",
-        "diet_focus": "补充B族维生素，缓解PMS",
-        "recommended": ["香蕉", "燕麦", "坚果", "菠菜", "全谷物", "红薯"],
-        "avoid": ["高盐食物", "咖啡因过量", "辛辣刺激"],
-        "recommended_fruits": ["香蕉", "苹果", "橙子", "樱桃"],
-        "avoid_fruits": [],
-    },
-}
-
-
-def calculate_phase(period_start: date, cycle_length: int = 28) -> tuple[str, date | None]:
-    """计算当前经期阶段"""
-    today = date.today()
-    day_in_cycle = (today - period_start).days + 1
-
-    if day_in_cycle < 1:
-        return "unknown", None
-
-    if day_in_cycle <= 5:
-        return "menstrual", None
-    elif day_in_cycle <= 13:
-        return "follicular", None
-    elif day_in_cycle <= 16:
-        ovulation_day = period_start + timedelta(days=13)
-        return "ovulation", ovulation_day
-    else:
-        return "luteal", None
 
 
 @router.post("/records", response_model=CycleResponse)
@@ -145,7 +90,12 @@ async def create_cycle_record(
     await db.commit()
     await db.refresh(cycle)
 
-    phase, _ = calculate_phase(req.period_start, cl)
+    phase, _ = calculate_menstrual_phase(
+        period_start=req.period_start,
+        cycle_length=cl,
+        ovulation_day=ovulation_day,
+        period_end=req.period_end,
+    )
 
     return CycleResponse(
         id=str(cycle.id),
@@ -160,7 +110,7 @@ async def create_cycle_record(
         mood=cycle.mood,
         flow_level=cycle.flow_level,
         current_phase=phase,
-        phase_diet_tip=PHASE_DIET_TIPS.get(phase, {}),
+        phase_diet_tip=get_phase_diet_tip(phase),
     )
 
 
@@ -181,7 +131,12 @@ async def get_current_phase(
         return None
 
     cl = cycle.cycle_length or 28
-    phase, _ = calculate_phase(cycle.period_start, cl)
+    phase, _ = calculate_menstrual_phase(
+        period_start=cycle.period_start,
+        cycle_length=cl,
+        ovulation_day=cycle.ovulation_day,
+        period_end=cycle.period_end,
+    )
 
     return CycleResponse(
         id=str(cycle.id),
@@ -196,7 +151,7 @@ async def get_current_phase(
         mood=cycle.mood,
         flow_level=cycle.flow_level,
         current_phase=phase,
-        phase_diet_tip=PHASE_DIET_TIPS.get(phase, {}),
+        phase_diet_tip=get_phase_diet_tip(phase),
     )
 
 
@@ -217,7 +172,12 @@ async def list_cycle_records(
     responses = []
     for cycle in cycles:
         cl = cycle.cycle_length or 28
-        phase, _ = calculate_phase(cycle.period_start, cl)
+        phase, _ = calculate_menstrual_phase(
+            period_start=cycle.period_start,
+            cycle_length=cl,
+            ovulation_day=cycle.ovulation_day,
+            period_end=cycle.period_end,
+        )
         responses.append(CycleResponse(
             id=str(cycle.id),
             period_start=cycle.period_start,
@@ -231,6 +191,6 @@ async def list_cycle_records(
             mood=cycle.mood,
             flow_level=cycle.flow_level,
             current_phase=phase,
-            phase_diet_tip=PHASE_DIET_TIPS.get(phase, {}),
+            phase_diet_tip=get_phase_diet_tip(phase),
         ))
     return responses

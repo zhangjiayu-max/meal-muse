@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 import api from "@/lib/api";
+import { toast } from "@/components/ui/toast";
 import { Scale, Activity, Heart, Droplets, Plus, TrendingDown, TrendingUp } from "lucide-react";
 
 interface BodyMetric {
@@ -45,7 +46,7 @@ export default function BodyPage() {
       setMetrics(data);
       setShowForm(false);
       setForm({ weight: "", body_fat_pct: "", bmi: "", sleep_hours: "", water_ml: "", steps: "" });
-    } catch { alert("记录失败"); }
+    } catch { toast("error", "记录失败"); }
   };
 
   const latest = metrics[metrics.length - 1];

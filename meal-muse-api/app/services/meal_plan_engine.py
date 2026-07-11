@@ -182,7 +182,7 @@ async def generate_plan(
     流程：获取用户画像 → 计算热量目标 → AI 生成 → 安全过滤 → 保存
     """
     # 1. 获取用户热量目标
-    calorie_target = _get_calorie_target(db, user)
+    calorie_target = await _get_calorie_target(db, user)
 
     # 2. 计算宏量营养素
     macros = calculate_macros(calorie_target, _get_goal_type(user))
@@ -312,7 +312,7 @@ async def replace_meal(
         raise ValueError("计划不存在")
 
     user_context = await get_user_context(db, user)
-    calorie_target = _get_calorie_target(db, user)
+    calorie_target = await _get_calorie_target(db, user)
     macros = calculate_macros(calorie_target, _get_goal_type(user))
 
     replace_prompt = f"""请重新生成一餐（{meal_type}），要求：
@@ -369,12 +369,9 @@ def _parse_json_response(text: str) -> dict | None:
         return None
 
 
-def _get_calorie_target(db: AsyncSession, user: User) -> int:
-    """获取用户每日热量目标，兜底用基础公式"""
-    from app.models.health_goal import HealthGoal
-    import random
-
-    result = db.execute(
+async def _get_calorie_target(db: AsyncSession, user: User) -> int:
+    """获取用户每日热量目标，优先取健康目标设置，兜底用 Mifflin 公式统一计算"""
+    result = await db.execute(
         select(HealthGoal).where(
             HealthGoal.user_id == user.id,
             HealthGoal.status == "active",
@@ -384,12 +381,16 @@ def _get_calorie_target(db: AsyncSession, user: User) -> int:
     if goals and goals[0].daily_calorie_target:
         return goals[0].daily_calorie_target
 
-    # 兜底：用 Harris-Benedict 估算
-    if user.height_cm and user.current_weight:
-        weight = float(user.current_weight)
-        height = float(user.height_cm)
-        bmr = 447.593 + 9.247 * weight + 3.098 * height - 4.33 * 25  # 假设 age=25
-        return int(bmr * 1.55 - 300)  # 默认减脂：-300kcal
+    # 兜底：用 Mifflin-St Jeor 公式（与 nutrition_calculator 口径一致）
+    if user.height_cm and user.current_weight and user.age:
+        return calculate_daily_calorie_target(
+            height_cm=float(user.height_cm),
+            weight_kg=float(user.current_weight),
+            age=user.age,
+            gender=user.gender or "female",
+            activity_level=user.activity_level or "sedentary",
+            goal_type=_get_goal_type(user),
+        )
     return 1600  # 默认值
 
 

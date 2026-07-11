@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import api from "@/lib/api";
+import { toast } from "@/components/ui/toast";
 import {
   Users,
   Search,
@@ -60,7 +61,7 @@ export default function AdminUsersPage() {
       await api.put(`/admin/users/${userId}/status?status=${status}`);
       loadUsers();
     } catch (err) {
-      alert("更新失败");
+      toast("error", "更新失败");
     }
   };
 

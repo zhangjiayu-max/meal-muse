@@ -10,7 +10,7 @@ from app.models import (
 )  # noqa: F401
 from app.api.v1 import (
     auth, users, diet, health, meals, chat,
-    menstrual, family as family_api, body_metrics, reports, admin, prompts,
+    menstrual, family as family_api, body_metrics, reports, admin, prompts, goals,
 )
 from app.config import get_settings
 from app.core.exceptions import register_exception_handlers
@@ -67,3 +67,4 @@ app.include_router(body_metrics.router, prefix="/api/v1")
 app.include_router(reports.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")
 app.include_router(prompts.router, prefix="/api/v1")
+app.include_router(goals.router, prefix="/api/v1")

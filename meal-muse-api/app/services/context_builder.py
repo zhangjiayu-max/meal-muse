@@ -482,7 +482,9 @@ async def _get_allergies(db: AsyncSession, user_id: str):
 
 
 async def _get_menstrual_phase(db: AsyncSession, user_id: str) -> str | None:
-    """获取当前经期阶段"""
+    """获取当前经期阶段（使用统一计算逻辑）"""
+    from app.services.menstrual_service import calculate_menstrual_phase, get_phase_context_desc
+
     result = await db.execute(
         select(MenstrualCycle).where(
             MenstrualCycle.user_id == user_id
@@ -492,20 +494,13 @@ async def _get_menstrual_phase(db: AsyncSession, user_id: str) -> str | None:
     if not cycle:
         return None
 
-    today = date.today()
-    if cycle.period_start and cycle.period_end and cycle.period_start <= today <= cycle.period_end:
-        return "月经期（需温补驱寒、补铁）"
-    if cycle.ovulation_day:
-        days_from_ov = (today - cycle.ovulation_day).days
-        if 0 <= days_from_ov <= 2:
-            return "排卵期（推荐促排卵食物）"
-        if 3 <= days_from_ov <= 10:
-            return "黄体期（缓解PMS，推荐高蛋白、深色食物）"
-    if cycle.period_end and today > cycle.period_end:
-        cycle_day = (today - cycle.period_start).days
-        if 5 <= cycle_day <= 13:
-            return "卵泡期（推荐高蛋白、深色食物）"
-    return None
+    phase, _ = calculate_menstrual_phase(
+        period_start=cycle.period_start,
+        cycle_length=cycle.cycle_length or 28,
+        ovulation_day=cycle.ovulation_day,
+        period_end=cycle.period_end,
+    )
+    return get_phase_context_desc(phase)
 
 
 async def _get_diet_summary(db: AsyncSession, user_id: str) -> str | None:

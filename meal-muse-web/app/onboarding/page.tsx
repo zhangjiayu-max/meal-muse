@@ -3,8 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "@/components/ui/toast";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+import api from "@/lib/api";
 
 /* ───── Step 2: Health Goals ───── */
 const GOALS = [
@@ -346,57 +345,48 @@ export default function OnboardingPage() {
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
-      const token = localStorage.getItem("token");
-      const res = await fetch(`${API_BASE}/users/onboarding`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          height_cm: Number(height),
-          weight_kg: Number(weight),
-          age: Number(age),
-          gender,
-          target_weight: targetWeight ? Number(targetWeight) : null,
-          goals,
-          health_sub_goals: healthSubGoals,
-          goal_priority: goalPriority,
-          constitution_types: constitutionTypes,
-          constitution_answers: constitutionAnswers,
-          diet_type: dietType,
-          taste_pref: tastePref,
-          cuisine_pref: cuisinePref,
-          allergies,
-          disliked_foods: dislikedFoods ? dislikedFoods.split(/[,，、\s]+/).filter(Boolean) : [],
-          preferred_ingredients: preferredIngredients,
-          cooking_method: cookingMethod,
-          cooking_frequency: cookingFrequency,
-          cooking_facility: cookingFacility,
-          meal_prep_time: mealPrepTime,
-          meal_pattern: mealPattern,
-          takeout_preference: takeoutPreference,
-          sleep_pattern: sleepPattern,
-          budget_level: budgetLevel,
-          water_intake_goal: waterIntakeGoal ? Number(waterIntakeGoal) : null,
-          couple_plan_enabled: couplePlanEnabled,
-          partner_profile: couplePlanEnabled
-            ? {
-                nickname: partnerNickname || "伴侣",
-                gender: "male",
-                age: partnerAge ? Number(partnerAge) : null,
-                height_cm: partnerHeight ? Number(partnerHeight) : null,
-                current_weight: partnerWeight ? Number(partnerWeight) : null,
-                taste_preference: partnerTastePreference,
-                disliked_foods: partnerDislikedFoods ? partnerDislikedFoods.split(/[,，、\s]+/).filter(Boolean) : [],
-                diet_notes: partnerDietNotes,
-              }
-            : null,
-          family_cooking: familyCooking,
-          family_members: familyMembers,
-        }),
+      await api.post("/users/onboarding", {
+        height_cm: Number(height),
+        weight_kg: Number(weight),
+        age: Number(age),
+        gender,
+        target_weight: targetWeight ? Number(targetWeight) : null,
+        goals,
+        health_sub_goals: healthSubGoals,
+        goal_priority: goalPriority,
+        constitution_types: constitutionTypes,
+        constitution_answers: constitutionAnswers,
+        diet_type: dietType,
+        taste_pref: tastePref,
+        cuisine_pref: cuisinePref,
+        allergies,
+        disliked_foods: dislikedFoods ? dislikedFoods.split(/[,，、\s]+/).filter(Boolean) : [],
+        preferred_ingredients: preferredIngredients,
+        cooking_method: cookingMethod,
+        cooking_frequency: cookingFrequency,
+        cooking_facility: cookingFacility,
+        meal_prep_time: mealPrepTime,
+        meal_pattern: mealPattern,
+        takeout_preference: takeoutPreference,
+        sleep_pattern: sleepPattern,
+        budget_level: budgetLevel,
+        water_intake_goal: waterIntakeGoal ? Number(waterIntakeGoal) : null,
+        couple_plan_enabled: couplePlanEnabled,
+        partner_profile: couplePlanEnabled
+          ? {
+              nickname: partnerNickname || "伴侣",
+              gender: "male",
+              age: partnerAge ? Number(partnerAge) : null,
+              height_cm: partnerHeight ? Number(partnerHeight) : null,
+              current_weight: partnerWeight ? Number(partnerWeight) : null,
+              taste_preference: partnerTastePreference,
+              disliked_foods: partnerDislikedFoods ? partnerDislikedFoods.split(/[,，、\s]+/).filter(Boolean) : [],
+              diet_notes: partnerDietNotes,
+            }
+          : null,
+        family_cooking: familyCooking,
+        family_members: familyMembers,
       });
-      if (!res.ok) throw new Error("提交失败");
       toast("success", "设置完成，欢迎使用 MealMuse!");
       router.push("/");
     } catch {

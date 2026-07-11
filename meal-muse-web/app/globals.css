@@ -6,6 +6,8 @@
   --primary-dark: #15803d;
   --accent: #f59e0b;
   --warning: #ef4444;
+  --error: #ef4444;
+  --success: #22c55e;
   --info: #3b82f6;
   --bg-page: #fafafa;
   --bg-card: #ffffff;
@@ -14,6 +16,7 @@
   --text-primary: #111827;
   --text-secondary: #6b7280;
   --text-muted: #9ca3af;
+  --text-tertiary: #d1d5db;
 
   /* 品牌绿 */
   --brand: #22c55e;
@@ -38,10 +41,12 @@
 
 .dark {
   --primary: #4ade80;
-  --primary-light: #166534;
+  --primary-light: #14532d;
   --primary-dark: #86efac;
   --accent: #fbbf24;
   --warning: #f87171;
+  --error: #f87171;
+  --success: #4ade80;
   --info: #60a5fa;
   --bg-page: #0f172a;
   --bg-card: #1e293b;
@@ -50,6 +55,7 @@
   --text-primary: #f1f5f9;
   --text-secondary: #94a3b8;
   --text-muted: #64748b;
+  --text-tertiary: #475569;
 
   /* 品牌绿（暗色模式） */
   --brand: #4ade80;

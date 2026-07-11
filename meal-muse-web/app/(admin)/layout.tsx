@@ -11,6 +11,7 @@ import {
   ArrowLeft,
   Shield,
 } from "lucide-react";
+import { toast } from "@/components/ui/toast";
 
 const adminNavItems = [
   { href: "/admin", label: "仪表盘", icon: LayoutDashboard },
@@ -41,7 +42,7 @@ export default function AdminLayout({
       if (user.phone === "13800000000") {
         setIsAdmin(true);
       } else {
-        alert("权限不足：仅管理员可访问");
+        toast("error", "权限不足：仅管理员可访问");
         router.replace("/");
       }
     } catch {

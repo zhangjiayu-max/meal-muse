@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
+import { toast } from "@/components/ui/toast";
 import { Leaf, Phone, Key, Zap } from "lucide-react";
 import type { TokenResponse } from "@/types";
 
@@ -47,7 +48,7 @@ export default function LoginPage() {
     try {
       await api.post("/auth/send-code", { phone });
       setError("");
-      alert("验证码已发送（开发环境固定：888888）");
+      toast("success", "验证码已发送（开发环境固定：888888）");
     } catch {
       setError("发送验证码失败");
     }

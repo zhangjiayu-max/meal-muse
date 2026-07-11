@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 import api from "@/lib/api";
+import { toast } from "@/components/ui/toast";
 import { Users, Copy, Plus, LogIn, UserMinus, Check } from "lucide-react";
 
 interface FamilyMember {
@@ -44,7 +45,7 @@ export default function FamilyPage() {
       setFamilyName("");
     } catch (err: unknown) {
       const e = err as { response?: { data?: { detail?: string } } };
-      alert(e.response?.data?.detail || "创建失败");
+      toast("error", e.response?.data?.detail || "创建失败");
     }
   };
 
@@ -57,7 +58,7 @@ export default function FamilyPage() {
       setInviteCode("");
     } catch (err: unknown) {
       const e = err as { response?: { data?: { detail?: string } } };
-      alert(e.response?.data?.detail || "加入失败");
+      toast("error", e.response?.data?.detail || "加入失败");
     }
   };
 
@@ -162,7 +163,7 @@ export default function FamilyPage() {
             </div>
 
             {/* Invite */}
-            <button onClick={() => { navigator.clipboard.writeText(`我在用 MealMuse 管理饮食，邀请你加入我的家庭！邀请码：${family.invite_code}`); alert("已复制邀请信息"); }}
+            <button onClick={() => { navigator.clipboard.writeText(`我在用 MealMuse 管理饮食，邀请你加入我的家庭！邀请码：${family.invite_code}`); toast("success", "已复制邀请信息"); }}
               className="w-full py-3 bg-purple-500 text-white rounded-xl font-medium hover:bg-purple-600 transition-colors flex items-center justify-center gap-2">
               <Plus className="w-4 h-4" /> 邀请家人
             </button>
